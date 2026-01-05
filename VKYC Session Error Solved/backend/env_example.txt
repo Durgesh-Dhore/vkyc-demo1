@@ -1,0 +1,21 @@
+# Database
+DATABASE_URL=mysql+pymysql://root:password@localhost/vkyc_db?charset=utf8mb4
+
+# MSG91 SMS API
+MSG91_API_KEY=your_msg91_api_key
+MSG91_SENDER_ID=VKYC
+
+# Email SMTP
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+
+# OCR APIs
+PAN_OCR_API=http://localhost:8001/api/ocr/pan
+AADHAAR_OCR_API=http://localhost:8001/api/ocr/aadhaar
+
+# DigiLocker API
+DIGILOCKER_API=http://localhost:8002/api/digilocker/verify
+DIGILOCKER_API_KEY=your_digilocker_api_key
+

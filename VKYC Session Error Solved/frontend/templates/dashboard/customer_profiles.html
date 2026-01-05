@@ -1,0 +1,172 @@
+{% extends 'dashboard/base.html' %}
+
+{% block title %}Customer Profiles - RegTech API{% endblock %}
+
+{% block content %}
+<h1>Customer Profiles</h1>
+
+<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
+    <input type="text" id="searchInput" placeholder="Search by Unique ID" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; flex: 1; max-width: 300px;">
+    <button class="btn btn-primary" onclick="searchCustomers()">🔍</button>
+    <input type="date" id="dateFrom" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <span>to</span>
+    <input type="date" id="dateTo" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <button class="btn btn-primary" onclick="exportData()">Export</button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Unique ID</th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Email</th>
+            <th>Created On</th>
+            <th>KYC Type</th>
+            <th>URL</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody id="customersTable">
+        {% if error_message %}
+        <tr>
+            <td colspan="8" style="text-align: center; padding: 20px; background-color: #fff3cd; color: #856404;">
+                ⚠️ {{ error_message }}
+                <br><small>Start the backend with: <code>cd backend && python main.py</code></small>
+            </td>
+        </tr>
+        {% endif %}
+        {% for customer in customers %}
+        <tr>
+            <td>{{ customer.unique_id }}</td>
+            <td>{{ customer.name }}</td>
+            <td>{{ customer.mobile }}</td>
+            <td>{{ customer.email }}</td>
+            <td>{{ customer.created_on }}</td>
+            <td>{{ customer.kyc_type }}</td>
+            <td>
+                {% if customer.vkyc_link %}
+                <a href="{{ customer.vkyc_link }}" target="_blank">🔗</a>
+                {% else %}
+                -
+                {% endif %}
+            </td>
+            <td>
+                <button class="btn btn-success" onclick="sendLink('{{ customer.id }}')">Resend SMS</button>
+            </td>
+        </tr>
+        {% empty %}
+        {% if not error_message %}
+        <tr>
+            <td colspan="8" style="text-align: center; padding: 40px;">No customers found</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+
+<button class="fab" onclick="showCreateCustomerModal()">+</button>
+
+<!-- Create Customer Modal -->
+<div id="createModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px;">
+        <h2>Create Customer</h2>
+        <form id="createCustomerForm" onsubmit="createCustomer(event)">
+            <div style="margin: 15px 0;">
+                <label>Name:</label>
+                <input type="text" name="name" required style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div style="margin: 15px 0;">
+                <label>Mobile:</label>
+                <input type="tel" name="mobile" required style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div style="margin: 15px 0;">
+                <label>Email:</label>
+                <input type="email" name="email" required style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn" onclick="closeCreateModal()" style="background: #ccc;">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showCreateCustomerModal() {
+    document.getElementById('createModal').style.display = 'block';
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').style.display = 'none';
+    document.getElementById('createCustomerForm').reset();
+}
+
+async function createCustomer(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const data = {
+        name: formData.get('name'),
+        mobile: formData.get('mobile'),
+        email: formData.get('email')
+    };
+    
+    try {
+        const response = await fetch('/api/customers/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        if (response.ok) {
+            alert('Customer created successfully!');
+            closeCreateModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create customer'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function sendLink(customerId) {
+    if (!confirm('Send VKYC link via SMS and Email?')) return;
+    
+    try {
+        const response = await fetch(`/api/send-link/${customerId}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        if (response.ok) {
+            alert('Link sent successfully!');
+        } else {
+            alert('Error: ' + (result.error || 'Failed to send link'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function searchCustomers() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('#customersTable tr');
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+}
+
+function exportData() {
+    alert('Export functionality will be implemented');
+}
+</script>
+{% endblock %}
+

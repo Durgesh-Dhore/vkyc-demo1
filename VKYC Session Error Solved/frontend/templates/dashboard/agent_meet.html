@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Agent Meet</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .meet {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .videos {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        #remoteVideo {
+            flex: 1;
+            width: 100%;
+            height: 540px;
+            background: #000;
+            border-radius: 6px;
+        }
+
+        #localVideo {
+            width: 240px;
+            height: 180px;
+            border-radius: 6px;
+            position: relative;
+            transform: none;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+        }
+
+        .controls {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: #1976d2;
+            color: white;
+        }
+
+        .btn-primary:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: #d32f2f;
+            color: white;
+        }
+
+        .doc-buttons {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="meet">
+        <h2>Agent Meet - Session <span id="sessionIdDisplay"></span></h2>
+        <div class="videos" style="position:relative;">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <video id="localVideo" autoplay muted playsinline
+                style="position:absolute; right:16px; bottom:16px; width:240px; height:180px; border-radius:6px; transform:none; box-shadow:0 6px 18px rgba(0,0,0,0.12);"></video>
+        </div>
+        <div class="controls">
+            <button class="btn btn-primary" id="startCallBtn">Start Call</button>
+            <button class="btn btn-danger" id="endCallBtn">End Call</button>
+        </div>
+        <div class="doc-buttons">
+            <h4>Document Requests:</h4>
+            <button class="btn btn-primary" id="requestPanBtn">Request PAN</button>
+            <button class="btn btn-primary" id="requestAadhaarFrontBtn" disabled>Request Aadhaar (Front)</button>
+            <button class="btn btn-primary" id="requestAadhaarBackBtn" disabled>Request Aadhaar (Back)</button>
+        </div>
+        <div id="status" style="margin-top:10px;color:#555"></div>
+        <div id="docStatus" style="margin-top:10px;color:#333; font-weight:bold"></div>
+        <div id="recordedSection" style="display:none; margin-top:20px;">
+            <h3>?? VKYC Recorded Video</h3>
+
+            <video id="recordedVideo" controls style="
+                    width:100%;
+                    max-height:520px;
+                    background:#000;
+                    border-radius:8px;
+                    margin-top:12px;
+               ">
+            </video>
+
+            <div style="margin-top:14px; display:flex; gap:12px;">
+                <a id="downloadBtn" class="btn btn-primary" download>
+                    ? Download Video
+                </a>
+
+                <button class="btn btn-danger" onclick="window.close()">
+                    ? Close Tab
+                </button>
+            </div>
+        </div>
+
+        <script>
+
+            const API_BASE = `${window.location.protocol}//${window.location.hostname}`;
+            const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}`;
+
+            const employeeId = "{{ employee_id }}";
+            const sessionId = "{{ session_id }}";
+            document.getElementById('sessionIdDisplay').textContent = sessionId;
+
+            let ws = null;
+            let pc = null;
+            let localStream = null;
+            let panVerified = false;
+            let aadhaarFrontVerified = false;
+            let mixedRecorder = null;
+            let mixedChunks = [];
+            let mixedCanvas = null;
+            let mixedCtx = null;
+            let mixedDrawLoop = null;
+            let isRecordingStarted = false;
+            let recordedVideoUrl = null;
+
+
+            async function getIceServers() {
+                // Default STUN servers (Google's public ones) - act as fallback
+                const defaultIceServers = [
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "stun:stun1.l.google.com:19302" },
+                ];
+
+                try {
+                    console.log("Fetching TURN credentials...");
+                    const res = await fetch(`${API_BASE}/api/turn-credentials`);
+
+                    if (!res.ok) {
+                        throw new Error(`TURN API failed: ${res.status}`);
+                    }
+
+                    const data = await res.json();
+
+                    // If data is an array (list of servers), merge with defaults
+                    // If it's an object (like Metered usually returns), wrap it
+                    let turnServers = [];
+                    if (Array.isArray(data)) {
+                        turnServers = data;
+                    } else if (data && typeof data === 'object') {
+                        // Start with the result from API
+                        turnServers = [data];
+                        // Check if it has 'iceServers' property (common format)
+                        if (data.iceServers && Array.isArray(data.iceServers)) {
+                            turnServers = data.iceServers;
+                        }
+                    }
+
+                    if (turnServers.length === 0) {
+                        console.warn("TURN API returned empty list, using defaults.");
+                        return defaultIceServers;
+                    }
+
+                    // Combine TURN with default STUN for maximum connectivity chance
+                    const finalServers = [...turnServers, ...defaultIceServers];
+                    console.log("Using ICE Servers:", finalServers);
+                    return finalServers;
+
+                } catch (error) {
+                    console.error("Error fetching TURN credentials, falling back to STUN:", error);
+                    return defaultIceServers;
+                }
+            }
+
+            function logStatus(msg) {
+                document.getElementById('status').textContent = msg;
+            }
+
+            function logDocStatus(msg) {
+                document.getElementById('docStatus').textContent = msg;
+            }
+
+            async function startWebSocket() {
+                ws = new WebSocket(`${WS_BASE}/ws/agent/${employeeId}`);
+
+                ws.onopen = () => {
+                    logStatus('WebSocket connected');
+                    // start heartbeat
+                    window.agentMeetHeartbeat = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'heartbeat' }));
+                    }, 15000);
+                    // Auto-start call when meet window is opened after acceptance
+                    setTimeout(() => {
+                        startCall().catch(e => console.error('Auto start call failed', e));
+                    }, 300);
+                };
+
+                ws.onmessage = async (evt) => {
+                    const msg = JSON.parse(evt.data);
+                    console.log('Received message:', msg);
+
+                    if (msg.type === 'webrtc_answer') {
+                        if (pc && msg.payload) {
+                            const answer = msg.payload.answer || msg.payload;
+                            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                            
+                            if (window.agentPendingCandidates && window.agentPendingCandidates.length) {
+                                for (const c of window.agentPendingCandidates) {
+                                    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.warn('Error adding pending candidate after answer', e); }
+                                }
+                                window.agentPendingCandidates = [];
+                            }
+                        }
+                    } else if (msg.type === 'document_verification_result') {
+                        // Document verification result coming from backend (user OCR)
+                        const docType = (msg.doc_type || '').toLowerCase();
+                        const success = msg.success || false;
+
+                        logDocStatus(`Document ${docType} verification: ${success ? '? SUCCESS' : '? FAILED'}`);
+
+                        // Update verification states
+                        if (docType === 'pan' && success) {
+                            panVerified = true;
+                            document.getElementById('requestAadhaarFrontBtn').disabled = false;
+                            logStatus('PAN verified. You can now request Aadhaar Front');
+                        } else if (docType === 'aadhaar_front' && success) {
+                            aadhaarFrontVerified = true;
+                            document.getElementById('requestAadhaarBackBtn').disabled = false;
+                            logStatus('Aadhaar Front verified. You can now request Aadhaar Back');
+                        } else if (docType === 'aadhaar_back' && success) {
+                            logStatus('All documents verified successfully!');
+                            // Optionally disable all document buttons
+                            document.getElementById('requestPanBtn').disabled = true;
+                            document.getElementById('requestAadhaarFrontBtn').disabled = true;
+                            document.getElementById('requestAadhaarBackBtn').disabled = true;
+                        } else if (!success) {
+                            // If verification failed, show error but don't change verification states
+                            logStatus(`${docType} verification failed. Please retry.`);
+                        }
+
+                    } else if (msg.type === 'webrtc_ice_candidate') {
+
+                        let c = msg.payload;
+
+                        // ?? normalize payload
+                        if (c && c.candidate) {
+                            c = {
+                                candidate: c.candidate,
+                                sdpMid: c.sdpMid ?? null,
+                                sdpMLineIndex: c.sdpMLineIndex ?? null
+                            };
+                        } else {
+                            console.warn("Invalid ICE payload received:", msg.payload);
+                            return;
+                        }
+
+                        if (!pc || !pc.remoteDescription) {
+                            window.agentPendingCandidates = window.agentPendingCandidates || [];
+                            window.agentPendingCandidates.push(c);
+                            return;
+                        }
+
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(c));
+                            console.log("? Agent ICE added");
+                        } catch (e) {
+                            console.error("? Agent ICE add failed", e, c);
+                        }
+
+                    } else if (msg.type === 'ping') {
+                        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'pong' }));
+                    } else if (msg.type === 'document_capture_ack') {
+                        logStatus(`User acknowledged ${msg.doc_type} capture request`);
+                    } else if (msg.type === 'document_capture_complete') {
+                        logStatus(`${msg.doc_type} capture completed by user`);
+                    }
+                };
+
+                ws.onclose = () => {
+                    logStatus('WebSocket closed');
+                    if (window.agentMeetHeartbeat) clearInterval(window.agentMeetHeartbeat);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    logStatus('WebSocket error occurred');
+                };
+            }
+
+            function startMixedRecording() {
+                if (mixedRecorder) return;
+                const userVideo = document.getElementById("remoteVideo");
+                const agentVideo = document.getElementById("localVideo");
+
+                mixedCanvas = document.createElement("canvas");
+                mixedCanvas.width = 1280;
+                mixedCanvas.height = 720;
+                mixedCtx = mixedCanvas.getContext("2d");
+
+                function draw() {
+                    mixedDrawLoop = requestAnimationFrame(draw);
+                    mixedCtx.fillStyle = "#000";
+                    mixedCtx.fillRect(0, 0, 1280, 720);
+
+                    if (userVideo.videoWidth > 0) {
+                        mixedCtx.drawImage(userVideo, 0, 0, 1280, 720);
+                    }
+
+                    if (agentVideo.videoWidth > 0) {
+                        mixedCtx.drawImage(agentVideo, 880, 20, 380, 280);
+                    }
+                }
+
+                draw();
+
+                // ?? Canvas video
+                const canvasStream = mixedCanvas.captureStream(30);
+
+                // ?? Final stream (video + audio)
+                const finalStream = new MediaStream();
+
+                // Add video
+                canvasStream.getVideoTracks().forEach(t => finalStream.addTrack(t));
+
+                // Add agent audio
+                if (localStream) {
+                    localStream.getAudioTracks().forEach(t => finalStream.addTrack(t));
+                }
+
+                // Add user audio
+                if (userVideo.srcObject) {
+                    userVideo.srcObject.getAudioTracks().forEach(t => finalStream.addTrack(t));
+                }
+
+                const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+                    ? "video/webm;codecs=vp8,opus"
+                    : "video/webm";
+
+                mixedRecorder = new MediaRecorder(finalStream, { mimeType });
+
+                mixedChunks = [];
+
+                mixedRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) mixedChunks.push(e.data);
+                };
+
+                mixedRecorder.start();
+                logStatus("????? Mixed video + audio recording started (Agent side)");
+            }
+
+
+            async function stopMixedRecording() {
+                return new Promise((resolve) => {
+                    if (!mixedRecorder) return resolve(null);
+
+                    mixedRecorder.onstop = async () => {
+                        try {
+                            const blob = new Blob(mixedChunks, { type: "video/webm" });
+
+                            const formData = new FormData();
+                            formData.append("file", blob, `vkyc_${sessionId}.webm`);
+
+                            const res = await fetch(`${API_BASE}/api/upload-video`, {
+                                method: "POST",
+                                body: formData
+                            });
+
+                            const data = await res.json();
+
+                            if (data.success && data.s3_url) {
+                                logStatus("? Recording uploaded to S3");
+                                resolve(data.s3_url);   // ? RETURN URL
+                            } else {
+                                logStatus("? Upload failed");
+                                resolve(null);
+                            }
+
+                        } catch (e) {
+                            console.error(e);
+                            logStatus("? Error uploading recording");
+                            resolve(null);
+                        }
+
+                        mixedRecorder = null;
+                        mixedChunks = [];
+
+                        if (mixedDrawLoop) {
+                            cancelAnimationFrame(mixedDrawLoop);
+                            mixedDrawLoop = null;
+                        }
+                    };
+
+                    mixedRecorder.stop();
+                });
+            }
+
+
+            async function startCall() {
+                try {
+                    logStatus('Getting local media...');
+
+                    // 1?? FORCE local stream FIRST
+                    if (!localStream) {
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+                            audio: true
+                        });
+
+                        const lv = document.getElementById('localVideo');
+                        lv.srcObject = localStream;
+                        lv.muted = true;
+                        await lv.play().catch(() => {});
+                    }
+
+                    // 2?? Get ICE servers
+                    const iceServers = await getIceServers();
+
+                    // 3?? Create PeerConnection AFTER stream
+                    pc = new RTCPeerConnection({ iceServers });
+
+                    // 4?? ADD TRACKS BEFORE OFFER (NON-NEGOTIABLE)
+                    for (const track of localStream.getTracks()) {
+                        pc.addTrack(track, localStream);
+                    }
+
+                    // 5?? Handle remote tracks
+                    pc.ontrack = (e) => {
+                        const remoteVideo = document.getElementById('remoteVideo');
+                        if (!remoteVideo.srcObject) {
+                            remoteVideo.srcObject = e.streams[0];
+
+                            remoteVideo.onplaying = () => {
+                                if (!isRecordingStarted) {
+                                    isRecordingStarted = true;
+                                    startMixedRecording();
+                                }
+                            };
+                        }
+                    };
+
+                    // 6?? ICE ? backend
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'webrtc_ice_candidate',
+                                session_id: sessionId,
+                                payload: event.candidate
+                            }));
+                        }
+                    };
+
+                    // 7?? Create offer ONLY NOW
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+
+                    ws.send(JSON.stringify({
+                        type: 'webrtc_offer',
+                        session_id: sessionId,
+                        payload: pc.localDescription
+                    }));
+
+                    logStatus('Offer sent, waiting for user...');
+
+                } catch (e) {
+                    console.error(e);
+                    logStatus('Error starting call: ' + e.message);
+                }
+            }
+
+
+            async function endCall() {
+
+                recordedVideoUrl = await stopMixedRecording();
+
+                isRecordingStarted = false;
+
+                if (pc) {
+                    pc.close();
+                    pc = null;
+                }
+
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'leave_session',
+                        session_id: sessionId
+                    }));
+                }
+
+                logStatus("?? Call ended. Loading recorded video...");
+                logDocStatus("");
+
+                // ?? IMPORTANT: show recorded video
+                showRecordedVideoForAgent();
+
+                // Reset document states
+                panVerified = false;
+                aadhaarFrontVerified = false;
+                document.getElementById('requestAadhaarFrontBtn').disabled = true;
+                document.getElementById('requestAadhaarBackBtn').disabled = true;
+                document.getElementById('requestPanBtn').disabled = false;
+            }
+
+            function showRecordedVideoForAgent() {
+                if (!recordedVideoUrl) {
+                    logStatus("? Recorded video URL not found");
+                    return;
+                }
+
+                // Hide live call UI
+                document.querySelector(".videos").style.display = "none";
+                document.querySelector(".controls").style.display = "none";
+                document.querySelector(".doc-buttons").style.display = "none";
+
+                // Show recorded section
+                const section = document.getElementById("recordedSection");
+                const video = document.getElementById("recordedVideo");
+                const downloadBtn = document.getElementById("downloadBtn");
+
+                video.src = recordedVideoUrl;
+                downloadBtn.href = recordedVideoUrl;
+
+                section.style.display = "block";
+            }
+
+
+
+            // Initialize WebSocket on load
+            document.addEventListener('DOMContentLoaded', () => {
+                startWebSocket();
+            });
+
+            // Wire buttons
+            document.getElementById('startCallBtn').addEventListener('click', async () => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    await startWebSocket();
+                }
+                await startCall();
+            });
+
+            document.getElementById('endCallBtn').addEventListener('click', () => endCall());
+
+            // Document request buttons
+            document.getElementById('requestPanBtn').addEventListener('click', () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'request_document_capture',
+                        session_id: sessionId,
+                        doc_type: 'pan'
+                    }));
+                    logStatus('Requested PAN capture from user');
+                    logDocStatus('Waiting for PAN verification...');
+                }
+            });
+
+            document.getElementById('requestAadhaarFrontBtn').addEventListener('click', () => {
+                if (ws && ws.readyState === WebSocket.OPEN && panVerified) {
+                    ws.send(JSON.stringify({
+                        type: 'request_document_capture',
+                        session_id: sessionId,
+                        doc_type: 'aadhaar_front'
+                    }));
+                    logStatus('Requested Aadhaar Front capture from user');
+                    logDocStatus('Waiting for Aadhaar Front verification...');
+                    // Disable button until we get response
+                    document.getElementById('requestAadhaarFrontBtn').disabled = true;
+                }
+            });
+
+            document.getElementById('requestAadhaarBackBtn').addEventListener('click', () => {
+                if (ws && ws.readyState === WebSocket.OPEN && aadhaarFrontVerified) {
+                    ws.send(JSON.stringify({
+                        type: 'request_document_capture',
+                        session_id: sessionId,
+                        doc_type: 'aadhaar_back'
+                    }));
+                    logStatus('Requested Aadhaar Back capture from user');
+                    logDocStatus('Waiting for Aadhaar Back verification...');
+                    // Disable button until we get response
+                    document.getElementById('requestAadhaarBackBtn').disabled = true;
+                }
+            });
+
+            // ?? Ensure recording stops if agent closes tab/browser
+            window.addEventListener("beforeunload", () => {
+                if (mixedRecorder && mixedRecorder.state !== "inactive") {
+                    mixedRecorder.stop();
+                }
+
+                if (mixedDrawLoop) {
+                    cancelAnimationFrame(mixedDrawLoop);
+                    mixedDrawLoop = null;
+                }
+            });
+
+        </script>
+</body>
+
+</html>

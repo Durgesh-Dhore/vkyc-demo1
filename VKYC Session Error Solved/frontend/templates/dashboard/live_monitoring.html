@@ -1,0 +1,577 @@
+{% extends 'dashboard/base.html' %}
+
+{% block title %}Live Monitoring - RegTech API{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h1>Live Monitoring</h1>
+        <p style="color: #666; margin-top: 5px;">Real-time VKYC session monitoring</p>
+    </div>
+    <div>
+        <input type="text" id="agentIdInput" placeholder="Enter Employee ID"
+            style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-right: 10px; width: 150px;">
+        <button class="btn btn-primary" onclick="connectAsAgent()">Connect as Agent</button>
+        <button class="btn" onclick="disconnectAgent()"
+            style="background: #f44336; color: white; margin-left: 10px;">Disconnect</button>
+    </div>
+</div>
+
+<div id="connectionStatus" style="padding: 15px; margin: 20px 0; border-radius: 4px; display: none;"></div>
+
+<div id="waitingSessionsSection" style="display: none;">
+    <h2>Waiting Sessions</h2>
+    <p style="color: #666; margin-bottom: 20px;">Calls in Queue: <span id="queueCount">0</span></p>
+
+    <div id="waitingSessionsList" style="display: grid; gap: 20px;">
+        <!-- Sessions will be dynamically added here -->
+    </div>
+</div>
+
+<div id="activeSessionSection" style="display: none;">
+    <h2>Active Session</h2>
+    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div>
+                <h3 id="activeCustomerName">-</h3>
+                <p style="color: #666; margin: 5px 0;">Session ID: <span id="activeSessionId">-</span></p>
+                <p style="color: #666; margin: 5px 0;">Mobile: <span id="activeCustomerMobile">-</span></p>
+            </div>
+            <div>
+                <div style="font-size: 24px; font-weight: bold; color: #2196f3;" id="sessionTimer">05:00</div>
+                <p style="color: #666; margin-top: 5px;">Time Remaining</p>
+            </div>
+        </div>
+
+        {% comment %} <!-- Document Capture Controls -->
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h4 style="margin: 0 0 10px 0; color: #333;">Document Verification</h4>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="requestDocumentCapture('pan')" id="btnCapturePAN">
+                    ?? Request PAN Card
+                </button>
+                <button class="btn btn-primary" onclick="requestDocumentCapture('aadhaar')" id="btnCaptureAadhaar">
+                    ?? Request Aadhaar Card
+                </button>
+                <button class="btn" onclick="cancelDocumentCapture()" id="btnCancelCapture"
+                    style="background: #ff9800; color: white; display: none;">
+                    ? Cancel Capture
+                </button>
+            </div>
+            <div id="documentCaptureStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;">
+            </div>
+        </div> {% endcomment %}
+
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-success" onclick="completeSession()">Complete Session</button>
+            <button class="btn" onclick="leaveSession()" style="background: #f44336; color: white;">Leave
+                Session</button>
+        </div>
+    </div>
+</div>
+
+<div id="noConnectionMessage" style="text-align: center; padding: 40px; color: #999;">
+    <p>Please enter your Agent ID and click "Connect as Agent" to start monitoring.</p>
+</div>
+
+<style>
+    .session-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #2196f3;
+    }
+
+    .session-card.taken {
+        border-left-color: #4caf50;
+        opacity: 0.7;
+    }
+
+    .session-card.expired {
+        border-left-color: #f44336;
+        opacity: 0.7;
+    }
+
+    .session-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .btn-accept {
+        background: #4caf50;
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-decline {
+        background: #f44336;
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-accept:hover {
+        background: #45a049;
+    }
+
+    .btn-decline:hover {
+        background: #da190b;
+    }
+
+    .btn-accept:disabled,
+    .btn-decline:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
+<script>
+
+    const API_BASE = window.location.origin;
+    const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.hostname;
+
+    let agentWs = null;
+    let employeeId = null;
+    let activeSessionId = null;
+    let sessionTimerInterval = null;
+    let sessionStartTime = null;
+    const SESSION_DURATION = 300000; // 5 minutes in milliseconds
+
+
+    function disconnectAgent() {
+        if (agentWs) {
+            agentWs.close();
+            agentWs = null;
+        }
+        employeeId = null;
+        localStorage.removeItem('employeeId');
+        updateConnectionStatus(false, 'Disconnected');
+        document.getElementById('waitingSessionsSection').style.display = 'none';
+        document.getElementById('activeSessionSection').style.display = 'none';
+        document.getElementById('noConnectionMessage').style.display = 'block';
+    }
+
+    function connectWebSocket() {
+
+        if (!employeeId) {
+            console.warn('Employee ID missing, not connecting WebSocket');
+            return;
+        }
+
+        if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+            return; // Already connected
+        }
+
+        agentWs = new WebSocket(`${WS_BASE}/ws/agent/${employeeId}`);
+
+
+        agentWs.onopen = () => {
+            console.log('Agent WebSocket connected');
+            updateConnectionStatus(true, 'Connected as Agent');
+            document.getElementById('noConnectionMessage').style.display = 'none';
+            // Start heartbeat to backend every 15 seconds
+            if (window.agentHeartbeatInterval) clearInterval(window.agentHeartbeatInterval);
+            window.agentHeartbeatInterval = setInterval(() => {
+                if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+                    agentWs.send(JSON.stringify({ type: 'heartbeat' }));
+                }
+            }, 15000);
+        };
+
+        agentWs.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            handleAgentMessage(message);
+        };
+
+        agentWs.onerror = (error) => {
+            console.error('Agent WebSocket error:', error);
+            updateConnectionStatus(false, 'Connection error');
+        };
+
+        agentWs.onclose = () => {
+            console.log('Agent WebSocket closed');
+            updateConnectionStatus(false, 'Disconnected');
+            if (window.agentHeartbeatInterval) {
+                clearInterval(window.agentHeartbeatInterval);
+                window.agentHeartbeatInterval = null;
+            }
+            // Attempt to reconnect after 3 seconds
+            setTimeout(() => {
+                if (employeeId) {
+                    connectWebSocket();
+                }
+            }, 3000);
+        };
+    }
+
+    function updateConnectionStatus(connected, message) {
+        const statusDiv = document.getElementById('connectionStatus');
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = connected ? '#d4edda' : '#f8d7da';
+        statusDiv.style.color = connected ? '#155724' : '#721c24';
+        statusDiv.textContent = `Status: ${message}`;
+    }
+
+    function handleAgentMessage(message) {
+        console.log('Agent message received:', message);
+        // Respond to ping from server
+        if (message.type === 'ping') {
+            if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+                agentWs.send(JSON.stringify({ type: 'pong' }));
+            }
+            return;
+        }
+
+        switch (message.type) {
+            case 'waiting_sessions':
+                displayWaitingSessions(message.sessions || []);
+                break;
+            case 'new_waiting_session':
+                addWaitingSession(message);
+                break;
+            case 'session_taken':
+                removeWaitingSession(message.session_id);
+                break;
+            case 'session_accepted':
+                startActiveSession(message);
+            case 'session_removed':
+                removeWaitingSession(message.session_id);
+                break;
+            case 'document_capture_requested':
+                // Request sent successfully
+                const statusDiv = document.getElementById('documentCaptureStatus');
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#d1ecf1';
+                statusDiv.style.color = '#0c5460';
+                statusDiv.textContent = `Waiting for user to show ${message.doc_type.toUpperCase()} card...`;
+                break;
+            case 'document_verification_result':
+                // Document verification result received
+                const resultDiv = document.getElementById('documentCaptureStatus');
+                resultDiv.style.display = 'block';
+
+                if (message.success) {
+                    resultDiv.style.background = '#d4edda';
+                    resultDiv.style.color = '#155724';
+                    resultDiv.textContent = `? ${message.doc_type.toUpperCase()} Verified Successfully!`;
+
+                    // Reset buttons after 3 seconds
+                    setTimeout(() => {
+                        document.getElementById('btnCapturePAN').disabled = false;
+                        document.getElementById('btnCaptureAadhaar').disabled = false;
+                        document.getElementById('btnCancelCapture').style.display = 'none';
+                        resultDiv.style.display = 'none';
+                    }, 3000);
+                } else {
+                    resultDiv.style.background = '#f8d7da';
+                    resultDiv.style.color = '#721c24';
+                    resultDiv.textContent = `? ${message.doc_type.toUpperCase()} Verification Failed. User will retry...`;
+                }
+                break;
+            case 'session_completed':
+                if (message.session_id === activeSessionId) {
+                    endActiveSession('Session completed successfully');
+                }
+                break;
+            case 'session_expired':
+                if (message.session_id === activeSessionId) {
+                    endActiveSession('Session expired');
+                } else {
+                    removeWaitingSession(message.session_id);
+                }
+                break;
+            case 'error':
+                alert('Error: ' + message.message);
+                break;
+        }
+    }
+
+    function displayWaitingSessions(sessions) {
+        const container = document.getElementById('waitingSessionsList');
+        const queueCount = document.getElementById('queueCount');
+
+        queueCount.textContent = sessions.length;
+
+        document.getElementById('noConnectionMessage').style.display = 'none';
+
+        if (sessions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">No waiting sessions</p>';
+            document.getElementById('waitingSessionsSection').style.display = 'block';
+            return;
+        }
+
+        document.getElementById('waitingSessionsSection').style.display = 'block';
+        container.innerHTML = sessions.map(session => createSessionCard(session)).join('');
+    }
+
+    function addWaitingSession(message) {
+
+        const session = {
+            session_id: message.session_id,
+            customer_name: message.customer_name || 'Unknown Customer',
+            customer_mobile: message.customer_mobile || '-',
+            started_at: message.started_at || new Date().toISOString()
+        };
+
+        const container = document.getElementById('waitingSessionsList');
+        const queueCount = document.getElementById('queueCount');
+
+        if (document.getElementById(`session-${session.session_id}`)) return;
+
+        queueCount.textContent = (parseInt(queueCount.textContent) || 0) + 1;
+
+        document.getElementById('waitingSessionsSection').style.display = 'block';
+
+        // ?? VERY IMPORTANT
+        container.insertAdjacentHTML('afterbegin', createSessionCard(session));
+    }
+
+    function removeWaitingSession(sessionId) {
+        const card = document.getElementById(`session-${sessionId}`);
+        if (card) {
+            card.classList.add('taken');
+            setTimeout(() => {
+                card.remove();
+                updateQueueCount();
+            }, 1000);
+        }
+    }
+
+    function updateQueueCount() {
+        const container = document.getElementById('waitingSessionsList');
+        const cards = container.querySelectorAll('.session-card:not(.taken):not(.expired)');
+        document.getElementById('queueCount').textContent = cards.length;
+
+        if (cards.length === 0) {
+            document.getElementById('waitingSessionsList').innerHTML =
+                '<p style="text-align:center;color:#999;padding:40px;">No waiting sessions</p>';
+        }
+    }
+
+    function createSessionCard(session) {
+        const timeAgo = session.started_at ? getTimeAgo(new Date(session.started_at)) : 'Just now';
+
+        return `
+        <div class="session-card" id="session-${session.session_id}">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <h3 style="margin: 0 0 10px 0;">${session.customer_name || 'Unknown Customer'}</h3>
+                    <p style="color: #666; margin: 5px 0;">Session ID: ${session.session_id}</p>
+                    <p style="color: #666; margin: 5px 0;">Mobile: ${session.customer_mobile || '-'}</p>
+                    <p style="color: #666; margin: 5px 0;">Waiting since: ${timeAgo}</p>
+                </div>
+            </div>
+            <div class="session-actions">
+                <button class="btn-accept" onclick="acceptSession(${session.session_id})">Accept</button>
+                <button class="btn-decline" onclick="declineSession(${session.session_id})">Decline</button>
+            </div>
+        </div>
+    `;
+    }
+ 
+    function acceptSession(sessionId) {
+        if (!agentWs || agentWs.readyState !== WebSocket.OPEN) {
+            alert('Not connected. Please connect as agent first.');
+            return;
+        }
+
+        agentWs.send(JSON.stringify({
+            type: 'accept_session',
+            session_id: sessionId
+        }));
+    }
+
+    function declineSession(sessionId) {
+        if (!agentWs || agentWs.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        agentWs.send(JSON.stringify({
+            type: 'decline_session',
+            session_id: sessionId
+        }));
+
+        // Remove from UI immediately
+        removeWaitingSession(sessionId);
+    }
+
+    function startActiveSession(session) {
+        activeSessionId = session.session_id;
+        sessionStartTime = Date.now();
+
+        document.getElementById('activeSessionId').textContent = session.session_id;
+        document.getElementById('activeCustomerName').textContent = session.customer_name || 'Unknown';
+        document.getElementById('activeCustomerMobile').textContent = session.customer_mobile || '-';
+
+        document.getElementById('waitingSessionsSection').style.display = 'none';
+        document.getElementById('activeSessionSection').style.display = 'block';
+
+        // Start timer
+        startSessionTimer();
+        // Open meet window for this session
+        try {
+            const meetUrl = `/agent-meet/${employeeId}/${session.session_id}/`;
+            window.open(meetUrl, '_blank', 'width=1100,height=800');
+        } catch (e) {
+            console.error('Could not open meet window:', e);
+        }
+    }
+
+    function startSessionTimer() {
+        if (sessionTimerInterval) {
+            clearInterval(sessionTimerInterval);
+        }
+
+        sessionTimerInterval = setInterval(() => {
+            if (!sessionStartTime) return;
+
+            const elapsed = Date.now() - sessionStartTime;
+            const remaining = SESSION_DURATION - elapsed;
+
+            if (remaining <= 0) {
+                clearInterval(sessionTimerInterval);
+                document.getElementById('sessionTimer').textContent = '00:00';
+                endActiveSession('Session expired');
+                return;
+            }
+
+            const minutes = Math.floor(remaining / 60000);
+            const seconds = Math.floor((remaining % 60000) / 1000);
+            document.getElementById('sessionTimer').textContent =
+                String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        }, 1000);
+    }
+
+    function endActiveSession(reason) {
+        if (sessionTimerInterval) {
+            clearInterval(sessionTimerInterval);
+            sessionTimerInterval = null;
+        }
+
+        activeSessionId = null;
+        sessionStartTime = null;
+
+        document.getElementById('activeSessionSection').style.display = 'none';
+        document.getElementById('waitingSessionsSection').style.display = 'block';
+
+        alert(reason);
+
+        // Refresh waiting sessions
+        if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+            // Request updated list
+            fetch('/api/sessions/waiting')
+                .then(r => r.json())
+                .then(sessions => {
+                    displayWaitingSessions(sessions);
+                });
+        }
+    }
+
+    function requestDocumentCapture(docType) {
+        if (!activeSessionId) {
+            alert('No active session');
+            return;
+        }
+
+        if (!agentWs || agentWs.readyState !== WebSocket.OPEN) {
+            alert('Not connected. Please connect as agent first.');
+            return;
+        }
+
+        // Send request to backend
+        agentWs.send(JSON.stringify({
+            type: 'request_document_capture',
+            session_id: activeSessionId,
+            doc_type: docType
+        }));
+
+        // Update UI
+        document.getElementById('btnCapturePAN').disabled = true;
+        document.getElementById('btnCaptureAadhaar').disabled = true;
+        document.getElementById('btnCancelCapture').style.display = 'block';
+
+        const statusDiv = document.getElementById('documentCaptureStatus');
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#d1ecf1';
+        statusDiv.style.color = '#0c5460';
+        statusDiv.textContent = `Requesting ${docType.toUpperCase()} card capture...`;
+    }
+
+    function cancelDocumentCapture() {
+        if (!activeSessionId || !agentWs || agentWs.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        agentWs.send(JSON.stringify({
+            type: 'cancel_document_capture',
+            session_id: activeSessionId
+        }));
+
+        // Reset UI
+        document.getElementById('btnCapturePAN').disabled = false;
+        document.getElementById('btnCaptureAadhaar').disabled = false;
+        document.getElementById('btnCancelCapture').style.display = 'none';
+        document.getElementById('documentCaptureStatus').style.display = 'none';
+    }
+
+    function completeSession() {
+        if (!activeSessionId) return;
+
+        if (confirm('Mark this session as completed?')) {
+            // This would typically send a message to backend
+            endActiveSession('Session completed');
+        }
+    }
+
+    function leaveSession() {
+        if (!activeSessionId) return;
+
+        if (confirm('Leave this session? The user will be put back in the queue.')) {
+            if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+                agentWs.send(JSON.stringify({
+                    type: 'leave_session',
+                    session_id: activeSessionId
+                }));
+            }
+            endActiveSession('Left session');
+        }
+    }
+
+    function getTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        const hours = Math.floor(minutes / 60);
+        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    }
+
+    // Auto-connect if agent ID is in localStorage
+    window.onload = function () {
+        const savedEmployeeId = localStorage.getItem('employeeId');
+        if (savedEmployeeId) {
+            document.getElementById('employeeIdInput').value = savedEmployeeId;
+        }
+    };
+
+    // Save agent ID on connect
+    function connectAsAgent() {
+        const agentIdInput = document.getElementById('agentIdInput').value.trim();
+        if (!agentIdInput) {
+            alert('Please enter your Agent ID');
+            return;
+        }
+
+        employeeId = agentIdInput;
+        localStorage.setItem('employeeId', employeeId);
+        connectWebSocket();
+    }
+</script>
+{% endblock %}

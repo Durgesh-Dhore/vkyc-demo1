@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VKYC - Video KYC</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 850px;
+            /* Increased from 600px to 850px */
+            width: 95%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .option-btn {
+            padding: 22px 25px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            background: white;
+            color: #667eea;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .option-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .schedule-form {
+            display: none;
+            margin-top: 25px;
+        }
+
+        .schedule-form.active {
+            display: block;
+        }
+
+        .form-group {
+            margin: 20px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        input[type="datetime-local"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            background: #f8f9fa;
+        }
+
+        .btn {
+            padding: 14px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .video-container {
+            display: none;
+        }
+
+        .video-container.active {
+            display: block;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            margin: 15px 0;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #localVideo,
+        #remoteVideo {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        /* Normal mode: User video only (agent video not implemented yet) */
+        .video-layout-normal #localVideo {
+            width: 100%;
+            height: auto;
+            position: relative;
+        }
+
+        .video-layout-normal #remoteVideo {
+            display: none;
+        }
+
+        /* Document capture mode: User large, Agent small (if available) */
+        .video-layout-capture #localVideo {
+            width: 100%;
+            height: auto;
+            position: relative;
+        }
+
+        .video-layout-capture #remoteVideo {
+            width: 200px;
+            height: 150px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            display: block;
+            background: #000;
+        }
+
+        /* Call layout: remote video large, local preview small overlay */
+        .video-layout-call #remoteVideo {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .video-layout-call #localVideo {
+            width: 200px;
+            height: 150px;
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+            z-index: 10;
+            border: 2px solid #fff;
+            border-radius: 8px;
+        }
+
+        /* Document capture overlay */
+        .document-capture-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 20;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .document-capture-overlay.active {
+            display: flex;
+        }
+
+        .capture-box {
+            width: 80%;
+            max-width: 500px;
+            aspect-ratio: 1.6;
+            border: 4px solid #4caf50;
+            border-radius: 8px;
+            position: relative;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+
+            0%,
+            100% {
+                border-color: #4caf50;
+            }
+
+            50% {
+                border-color: #81c784;
+            }
+        }
+
+        .capture-instructions {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .capture-status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .capture-status.detecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .capture-status.capturing {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .capture-status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .capture-status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .video-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 15px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .permission-status {
+            display: flex;
+            gap: 20px;
+            margin: 25px 0;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .permission-item {
+            padding: 12px 25px;
+            border-radius: 8px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 15px;
+        }
+
+        .permission-item.granted {
+            background: #d4edda;
+            color: #155724;
+            font-weight: bold;
+        }
+
+        .permission-item.granted::after {
+            content: " ?";
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .permission-item.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .permission-item.denied {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .waiting-screen {
+            text-align: center;
+            padding: 40px 20px;
+            display: none;
+        }
+
+        .waiting-screen.active {
+            display: block;
+        }
+
+        .waiting-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .waiting-timer {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+
+        .no-agent-message {
+            display: none;
+            padding: 25px;
+            background: #fff3cd;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .no-agent-message.active {
+            display: block;
+        }
+
+        .location-guide {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 6px;
+        }
+
+        .location-guide h3 {
+            color: #1565C0;
+            margin-bottom: 12px;
+        }
+
+        .location-guide ul {
+            padding-left: 20px;
+        }
+
+        .location-guide li {
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+
+        .location-override {
+            text-align: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 6px;
+        }
+
+        #localVideo,
+        #remoteVideo {
+            transform: none !important;
+            -webkit-transform: none !important;
+        }
+
+        /* Responsive adjustments for mobile and tablet */
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 25px;
+                width: 98%;
+            }
+
+            h1 {
+                font-size: 24px;
+                margin-bottom: 25px;
+            }
+
+            .option-btn {
+                padding: 18px 20px;
+                font-size: 16px;
+            }
+
+            .permission-status {
+                gap: 15px;
+            }
+
+            .permission-item {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+
+            .waiting-timer {
+                font-size: 24px;
+            }
+
+            .video-wrapper {
+                margin: 12px 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 25px 20px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            .option-btn {
+                padding: 16px 18px;
+                font-size: 15px;
+            }
+
+            .permission-status {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .permission-item {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .video-layout-capture #remoteVideo {
+                width: 150px;
+                height: 112px;
+            }
+
+            .video-layout-call #localVideo {
+                width: 150px;
+                height: 112px;
+            }
+
+            .capture-box {
+                width: 90%;
+            }
+
+            .capture-instructions {
+                padding: 15px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div id="optionsView">
+            <h1>Welcome to VKYC</h1>
+            <div class="options">
+                <button class="option-btn" onclick="startNow()">Start VKYC Now</button>
+                <button class="option-btn" onclick="showSchedule()">Schedule VKYC</button>
+            </div>
+
+            <div id="scheduleForm" class="schedule-form">
+                <h2>Schedule Your VKYC</h2>
+                <div class="form-group">
+                    <label>Select Date & Time:</label>
+                    <input type="datetime-local" id="scheduledTime" required>
+                </div>
+                <button class="btn btn-primary" onclick="scheduleVKYC()">Schedule</button>
+            </div>
+        </div>
+
+        <div id="videoView" class="video-container">
+            <h2>VKYC Session</h2>
+            <div id="statusMessage"></div>
+
+            <div class="permission-status" id="permissionStatus" style="display: none;">
+                <div class="permission-item pending" id="permCamera">
+                    <span>??</span> <span id="permCameraText">Camera</span>
+                </div>
+                <div class="permission-item pending" id="permMicrophone">
+                    <span>??</span> <span id="permMicrophoneText">Microphone</span>
+                </div>
+                <div class="permission-item pending" id="permLocation">
+                    <span>??</span> <span id="permLocationText">Location</span>
+                </div>
+            </div>
+
+            <div id="locationGuide" class="location-guide" style="display: none;">
+                <h3>?? Location Access Required</h3>
+                <p>To proceed with VKYC, please enable location access:</p>
+                <ul>
+                    <li><strong>On Mobile:</strong> Turn on GPS/Location from quick settings</li>
+                    <li><strong>On Desktop:</strong> Click the location icon in address bar and allow</li>
+                    <li>Refresh browser settings if location was previously blocked</li>
+                </ul>
+                <div class="location-override">
+                    <p><strong>Note:</strong> If location cannot be enabled, contact support for manual verification.
+                    </p>
+                    <button class="btn" onclick="skipLocation()"
+                        style="background: #ff9800; color: white; width: auto; margin-top: 10px;">
+                        Skip Location (Contact Support)
+                    </button>
+                </div>
+            </div>
+
+            <div class="video-wrapper" id="videoWrapper">
+                <video id="localVideo" autoplay muted></video>
+                <video id="remoteVideo" autoplay style="display: none;"></video>
+
+                <!-- Document Capture Overlay -->
+                <div class="document-capture-overlay" id="documentCaptureOverlay">
+                    <div class="capture-box" id="captureBox"></div>
+                    <div class="capture-instructions" id="captureInstructions">
+                        <h3 id="captureDocType">Please show your document</h3>
+                        <p>Position your document inside the green box</p>
+                        <p style="font-size: 14px; color: #666; margin-top: 10px;">Keep the document steady for
+                            automatic capture</p>
+                        <div class="capture-status" id="captureStatus" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-controls" style="display: none;">
+                <p style="text-align: center; color: #666; font-size: 14px; margin: 10px 0;">
+                    Agent will request document verification when needed
+                </p>
+                <button class="btn btn-primary" onclick="completeKYC()">Complete KYC</button>
+            </div>
+
+            <div id="retryPermissions" style="display: none; text-align: center; margin-top: 20px;">
+                <button class="btn btn-primary" onclick="requestPermissions()">Retry Permissions</button>
+                <button class="btn" onclick="resetSession()"
+                    style="background: #f44336; color: white; margin-top: 10px;">
+                    Start New Session
+                </button>
+            </div>
+
+            <!-- Waiting for Agent Screen -->
+            <div id="waitingScreen" class="waiting-screen">
+                <div class="waiting-spinner"></div>
+                <h2>Waiting for Agent...</h2>
+                <p>Please wait while we connect you with an available agent.</p>
+                <div class="waiting-timer" id="waitingTimer">00:60</div>
+                <div class="no-agent-message" id="noAgentMessage">
+                    <h3>No Agent Available</h3>
+                    <p>We're sorry, but no agent is currently available. Please try again in a moment.</p>
+                    <button class="btn btn-primary" onclick="retryAgentConnection()">Retry Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = `${window.location.protocol}//${window.location.hostname}`;
+        const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}`;
+
+        const uniqueId = window.location.pathname.split('/')[2];
+        let ws = null;
+        let sessionId = null;
+        let localStream = null;
+        let recordingStartTime = null;
+        const MAX_DURATION = 300000; // 5 minutes in milliseconds
+        let waitingTimer = null;
+        let waitingCountdown = 60; // 60 seconds wait time
+        let waitingInterval = null;
+        let currentCameraMode = 'user'; // 'user' or 'environment' (rear)
+        let documentCaptureActive = false;
+        let documentCaptureType = null; // 'pan' or 'aadhaar'
+        let captureDetectionInterval = null;
+        let stableFrameCount = 0;
+        const STABLE_FRAMES_REQUIRED = 10; // Number of stable frames before auto-capture
+        let pc = null;
+        let pendingIceCandidates = [];
+        let remoteDescriptionSet = false;
+
+
+        function safePlay(video) {
+            if (!video) return;
+            const p = video.play();
+            if (p !== undefined) {
+                p.catch(() => {
+                    video.muted = true;
+                    video.play().catch(() => {});
+                });
+            }
+        }
+
+
+        async function getIceServers() {
+            // Default STUN servers (Google's public ones) - act as fallback
+            const defaultIceServers = [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" },
+            ];
+
+            try {
+                console.log("Fetching TURN credentials...");
+                const res = await fetch(`${API_BASE}/api/turn-credentials`);
+
+                if (!res.ok) {
+                    throw new Error(`TURN API failed: ${res.status}`);
+                }
+
+                const data = await res.json();
+
+                // If data is an array (list of servers), merge with defaults
+                // If it's an object (like Metered usually returns), wrap it
+                let turnServers = [];
+                if (Array.isArray(data)) {
+                    turnServers = data;
+                } else if (data && typeof data === 'object') {
+                    // Start with the result from API
+                    turnServers = [data];
+                    // Check if it has 'iceServers' property (common format)
+                    if (data.iceServers && Array.isArray(data.iceServers)) {
+                        turnServers = data.iceServers;
+                    }
+                }
+
+                if (turnServers.length === 0) {
+                    console.warn("TURN API returned empty list, using defaults.");
+                    return defaultIceServers;
+                }
+
+                // Combine TURN with default STUN for maximum connectivity chance
+                const finalServers = [...turnServers, ...defaultIceServers];
+                console.log("Using ICE Servers:", finalServers);
+                return finalServers;
+
+            } catch (error) {
+                console.error("Error fetching TURN credentials, falling back to STUN:", error);
+                return defaultIceServers;
+            }
+        }
+
+        // Track permission status
+        let permissionsStatus = {
+            camera: false,
+            microphone: false,
+            location: false
+        };
+
+        // Check for existing session on page load
+        window.onload = function () {
+            const savedSession = sessionStorage.getItem('vkyc_session_' + uniqueId);
+            if (savedSession) {
+                const sessionData = JSON.parse(savedSession);
+                sessionId = sessionData.sessionId;
+
+                // Check if session is still valid (less than 5 minutes old)
+                const sessionAge = Date.now() - sessionData.startTime;
+                if (sessionAge < MAX_DURATION) {
+                    // Resume existing session
+                    document.getElementById('optionsView').style.display = 'none';
+                    document.getElementById('videoView').classList.add('active');
+                    showStatus('Resuming your VKYC session...', 'info');
+                    connectWebSocket();
+                } else {
+                    // Session expired
+                    sessionStorage.removeItem('vkyc_session_' + uniqueId);
+                    showStatus('Previous session expired. Please start a new one.', 'info');
+                }
+            }
+        };
+
+        function saveSession() {
+            if (sessionId) {
+                const sessionData = {
+                    sessionId: sessionId,
+                    startTime: Date.now()
+                };
+                sessionStorage.setItem('vkyc_session_' + uniqueId, JSON.stringify(sessionData));
+            }
+        }
+
+        function clearSession() {
+            sessionStorage.removeItem('vkyc_session_' + uniqueId);
+        }
+
+        function resetSession() {
+            clearSession();
+            location.reload();
+        }
+
+        async function startNow() {
+            try {
+                showStatus('Starting VKYC session...', 'info');
+
+                const response = await fetch(`${API_BASE}/api/vkyc/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ unique_id: uniqueId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    sessionId = data.session_id;
+                    saveSession();
+
+                    document.getElementById('optionsView').style.display = 'none';
+                    document.getElementById('videoView').classList.add('active');
+
+                    connectWebSocket();
+                } else {
+                    showStatus(
+                        'Failed to start VKYC: ' + (data.error || 'Unknown error'),
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showStatus('Error starting VKYC: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+
+        function showSchedule() {
+            document.getElementById('scheduleForm').classList.add('active');
+        }
+
+        async function scheduleVKYC() {
+            const scheduledTime = document.getElementById('scheduledTime').value;
+            if (!scheduledTime) {
+                alert('Please select a date and time');
+                return;
+            }
+
+            try {
+                showStatus('Scheduling VKYC...', 'info');
+                const response = await fetch(`${API_BASE}/api/vkyc/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        unique_id: uniqueId,
+                        scheduled_time: scheduledTime
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showStatus('VKYC scheduled successfully! You will receive SMS and Email with the link.', 'success');
+                    setTimeout(() => {
+                        document.getElementById('scheduleForm').classList.remove('active');
+                    }, 3000);
+                } else {
+                    showStatus('Failed to schedule: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showStatus('Error scheduling VKYC: ' + error.message, 'error');
+            }
+        }
+
+
+        async function createUserPeerConnection() {
+                try {
+                    const iceServers = await getIceServers();
+
+                    pc = new RTCPeerConnection({
+                        iceServers: iceServers
+                    });
+
+                    pc.ontrack = (evt) => {
+                        const remoteVideo = document.getElementById('remoteVideo');
+                        if (!remoteVideo.srcObject) {
+                            remoteVideo.srcObject = evt.streams[0];
+                            remoteVideo.style.display = 'block';
+
+                            remoteVideo.onplaying = () => {
+                                console.log("Agent video started");
+                                // Removed: startMixedRecording();
+                            };
+                        }
+                    }
+
+
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                            console.log("ICE (user):", event.candidate.candidate);
+                            ws.send(JSON.stringify({
+                                type: 'webrtc_ice_candidate',
+                                session_id: sessionId,
+                                payload: event.candidate
+                            }));
+                        }
+                    };
+
+                    // Add connection state monitoring
+                    pc.oniceconnectionstatechange = () => {
+                        console.log('ICE connection state (user):', pc.iceConnectionState);
+                        
+                        if (pc.iceConnectionState === 'failed') {
+                            console.warn('ICE failed – recreate PeerConnection');
+                        
+                        } else if (pc.iceConnectionState === 'connected') {
+                            showStatus('Connected to agent successfully!', 'success');
+                        } else if (pc.iceConnectionState === 'checking') {
+                            showStatus('Connecting to agent...', 'info');
+                        }
+                    };
+
+                    pc.onicegatheringstatechange = () => {
+                        console.log('ICE gathering state (user):', pc.iceGatheringState);
+                        if (pc.iceGatheringState === 'gathering') {
+                            showStatus('Setting up connection...', 'info');
+                        } else if (pc.iceGatheringState === 'complete') {
+                            showStatus('Ready for agent connection...', 'info');
+                        }
+                    };
+
+                    // ?? FORCE local stream if missing
+                    if (!localStream) {
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+                            audio: true
+                        });
+
+                        const v = document.getElementById('localVideo');
+                        v.srcObject = localStream;
+                        safePlay(v);
+                    }
+
+                    // ?? ALWAYS add tracks (KEEP THIS)
+                    for (const track of localStream.getTracks()) {
+                        pc.addTrack(track, localStream);
+                    }
+
+
+                } catch (e) {
+                    console.error('Error creating PeerConnection for user:', e);
+                }
+            }
+
+        function connectWebSocket() {
+            if (!sessionId) return;
+
+            showStatus('Connecting to VKYC session...', 'info');
+            ws = new WebSocket(`${WS_BASE}/ws/vkyc/${sessionId}`);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                showStatus('Connected! Requesting permissions...', 'success');
+
+                // Send IP address
+                fetch('https://api.ipify.org?format=json')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'ip_address', ip: data.ip }));
+                        }
+                    })
+                    .catch(err => console.log('IP fetch error:', err));
+
+                // Start requesting permissions
+                requestPermissions();
+                
+
+                // Start heartbeat to backend every 15 seconds
+                if (window.vkycHeartbeatInterval) clearInterval(window.vkycHeartbeatInterval);
+                window.vkycHeartbeatInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'heartbeat' }));
+                    }
+                }, 15000);
+            };
+
+            ws.onmessage = (event) => {
+                console.log('WebSocket message received:', event.data);
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                showStatus('Connection error. Please try again.', 'error');
+                document.getElementById('retryPermissions').style.display = 'block';
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket connection closed');
+                showStatus('Connection closed', 'info');
+
+                if (pc) {
+                    try {
+                        pc.close();
+                    } catch (e) {}
+                    pc = null;
+                }
+
+                pendingIceCandidates = [];
+
+                if (window.vkycHeartbeatInterval) {
+                    clearInterval(window.vkycHeartbeatInterval);
+                    window.vkycHeartbeatInterval = null;
+                }
+            };
+        }
+
+        async function handleWebSocketMessage(message) {
+            console.log('Processing message type:', message.type);
+            switch (message.type) {
+                case "webrtc_offer":
+                    (async () => {
+                        if (!pc) await createUserPeerConnection();
+
+                        await pc.setRemoteDescription(
+                            new RTCSessionDescription(message.payload)
+                        );
+
+                        // ADD ALL QUEUED ICE NOW
+                        for (const c of pendingIceCandidates) {
+                            await pc.addIceCandidate(new RTCIceCandidate(c));
+                        }
+                        pendingIceCandidates = [];
+
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+
+                        ws.send(JSON.stringify({
+                            type: "webrtc_answer",
+                            session_id: sessionId,
+                            payload: pc.localDescription
+                        }));
+                    })();
+                    break;
+
+                case "webrtc_ice_candidate":
+
+                    let c = message.payload;
+
+                    if (c && c.candidate) {
+                        c = {
+                            candidate: c.candidate,
+                            sdpMid: c.sdpMid ?? null,
+                            sdpMLineIndex: c.sdpMLineIndex ?? null
+                        };
+                    } else {
+                        console.warn("Invalid ICE payload:", message.payload);
+                        return;
+                    }
+
+                    if (!pc || !pc.remoteDescription) {
+                        pendingIceCandidates.push(c);
+                        return;
+                    }
+
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(c));
+                        console.log("? User ICE added");
+                    } catch (e) {
+                        console.error("? User ICE add failed", e, c);
+                    }
+                    break;
+
+
+
+                case 'ping':
+                    // Respond to server ping with pong immediately
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'pong' }));
+                    }
+                    return;
+                case 'waiting_for_agent':
+                    showWaitingScreen();
+                    break;
+                case 'agent_assigned':
+                    // Removed: startMixedRecording()
+                    hideWaitingScreen();
+                    showStatus('Agent joined...', 'success');
+                    startVideo();
+                    // Removed: startRecording()
+                    break;
+
+                case 'agent_left':
+                    showStatus('Agent has left. Waiting for new agent...', 'info');
+                    showWaitingScreen();
+                    break;
+                case 'permissions_ok':
+                    showStatus('Permissions granted. Starting video...', 'success');
+                    startVideo();
+                    break;
+                case 'pan_extracted':
+                    showStatus('PAN extracted: ' + JSON.stringify(message.data), 'success');
+                    break;
+                case 'aadhaar_extracted':
+                    showStatus('Aadhaar extracted: ' + JSON.stringify(message.data), 'success');
+                    break;
+                case 'digilocker_result':
+                    if (message.success) {
+                        showStatus('DigiLocker verification successful!', 'success');
+                    } else {
+                        showStatus('DigiLocker verification failed. Please retry.', 'error');
+                    }
+                    break;
+                case 'kyc_completed':
+                    showStatus('Your KYC is complete!', 'success');
+                    clearSession();
+                    clearWaitingTimer();
+                    setTimeout(() => {
+                        alert('KYC completed successfully!');
+                        window.location.href = '/';
+                    }, 2000);
+                    break;
+                case 'session_expired':
+                    handleSessionExpiry();
+                    break;
+                case 'request_document_capture':
+                    startDocumentCapture(message.doc_type);
+                    break;
+                case 'cancel_document_capture':
+                    cancelDocumentCapture();
+                    break;
+                case 'document_verification_result':
+                    handleDocumentVerificationResult(message);
+                    break;
+                default:
+                    console.log('Unhandled message type:', message.type);
+            }
+        }
+
+        function handleSessionExpiry() {
+            // Removed: stopRecording()
+            // Stop video
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            // Hide video controls
+            document.querySelector('.video-controls').style.display = 'none';
+            document.getElementById('localVideo').srcObject = null;
+
+            // Show expiry message with retry button
+            hideWaitingScreen();
+            showStatus('Session expired. The 5-minute time limit has been reached.', 'error');
+
+            // Show retry button
+            const retryDiv = document.createElement('div');
+            retryDiv.id = 'sessionExpiredRetry';
+            retryDiv.style.cssText = 'text-align: center; margin: 20px 0; padding: 20px; background: #fff3cd; border-radius: 8px;';
+            retryDiv.innerHTML = `
+                <h3>Session Expired</h3>
+                <p>The VKYC session has expired due to the 5-minute time limit.</p>
+                <button class="btn btn-primary" onclick="retryVKYCSession()" style="margin-top: 10px;">Retry VKYC</button>
+            `;
+
+            const container = document.querySelector('.container');
+            const existingRetry = document.getElementById('sessionExpiredRetry');
+            if (existingRetry) {
+                existingRetry.remove();
+            }
+            container.appendChild(retryDiv);
+        }
+
+        async function retryVKYCSession() {
+            // Clear current session
+            clearSession();
+            clearWaitingTimer();
+
+            // Close WebSocket if open
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            // Stop video stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            // Remove expiry message
+            const retryDiv = document.getElementById('sessionExpiredRetry');
+            if (retryDiv) {
+                retryDiv.remove();
+            }
+
+            // Hide video view
+            document.getElementById('videoView').classList.remove('active');
+
+            // Show options view
+            document.getElementById('optionsView').style.display = 'block';
+
+            // Reset status
+            showStatus('Starting new VKYC session...', 'info');
+
+            // Start new session
+            await startNow();
+        }
+
+        function showWaitingScreen() {
+            document.getElementById('waitingScreen').classList.add('active');
+            document.getElementById('noAgentMessage').classList.remove('active');
+            waitingCountdown = 60;
+            updateWaitingTimer();
+
+            // Start countdown
+            waitingInterval = setInterval(() => {
+                waitingCountdown--;
+
+                if (waitingCountdown <= 0) {
+                    waitingCountdown = 0;   // Freeze at 0
+                    updateWaitingTimer();   // Show final 00:00
+                    clearWaitingTimer();
+                    document.getElementById('noAgentMessage').classList.add('active');
+                    return; // ? STOP further UI updates
+                }
+
+                updateWaitingTimer();
+            }, 1000);
+        }
+
+        function hideWaitingScreen() {
+            document.getElementById('waitingScreen').classList.remove('active');
+            document.getElementById('noAgentMessage').classList.remove('active');
+            clearWaitingTimer();
+        }
+
+        function updateWaitingTimer() {
+            const minutes = Math.floor(waitingCountdown / 60);
+            const seconds = waitingCountdown % 60;
+            document.getElementById('waitingTimer').textContent =
+                String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        }
+
+        function clearWaitingTimer() {
+            if (waitingInterval) {
+                clearInterval(waitingInterval);
+                waitingInterval = null;
+            }
+        }
+
+        function retryAgentConnection() {
+            // Reset waiting screen and send ready_for_agent again
+            document.getElementById('noAgentMessage').classList.remove('active');
+            waitingCountdown = 60;
+            updateWaitingTimer();
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (!pc && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ready_for_agent' }));
+                }
+
+            }
+
+            // Restart countdown
+            if (!waitingInterval) {
+                waitingInterval = setInterval(() => {
+                    waitingCountdown--;
+                    updateWaitingTimer();
+
+                    if (waitingCountdown <= 0) {
+                        clearWaitingTimer();
+                        document.getElementById('noAgentMessage').classList.add('active');
+                    }
+                }, 1000);
+            }
+        }
+
+        function getLocationWithFallback() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation not supported'));
+                    return;
+                }
+
+                // First try with high accuracy
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        resolve(position);
+                    },
+                    (error) => {
+                        // If high accuracy fails, try with low accuracy
+                        console.log('High accuracy failed, trying low accuracy...');
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                resolve(position);
+                            },
+                            (error2) => {
+                                reject(error2);
+                            },
+                            {
+                                timeout: 10000,
+                                maximumAge: 60000,
+                                enableHighAccuracy: false
+                            }
+                        );
+                    },
+                    {
+                        timeout: 10000,
+                        maximumAge: 0,
+                        enableHighAccuracy: true
+                    }
+                );
+            });
+        }
+
+        async function requestLocationPermission() {
+            showStatus('Requesting location access...', 'info');
+            document.getElementById('locationGuide').style.display = 'block';
+
+            const permLocationEl = document.getElementById('permLocation');
+            permLocationEl.classList.remove('denied');
+            permLocationEl.classList.add('pending');
+            document.getElementById('permLocationText').textContent = 'Location (Requesting...)';
+
+            try {
+                const position = await getLocationWithFallback();
+                console.log('? Location permission granted!', position);
+
+                // CRITICAL: Set location permission status FIRST
+                permissionsStatus.location = true;
+                console.log('Location status set to true. Current permissions:', permissionsStatus);
+
+                // Update Location UI - Force update
+                permLocationEl.className = 'permission-item granted';
+                document.getElementById('permLocationText').textContent = 'Location ?';
+                document.getElementById('locationGuide').style.display = 'none';
+
+                // Force UI reflow
+                permLocationEl.offsetHeight;
+
+                // Send location data
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'location_data',
+                        location: {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: position.timestamp
+                        }
+                    }));
+                }
+
+                // IMPORTANT: Check if all permissions are granted and start VKYC
+                // Use setTimeout to ensure all state updates are complete
+                console.log('Location granted! Verifying all permissions before starting VKYC...');
+                console.log('Current permissions state:', {
+                    camera: permissionsStatus.camera,
+                    microphone: permissionsStatus.microphone,
+                    location: permissionsStatus.location
+                });
+
+                // Double check permissions before starting
+                setTimeout(() => {
+                    console.log('=== FINAL PERMISSION CHECK ===');
+                    console.log('Camera:', permissionsStatus.camera);
+                    console.log('Microphone:', permissionsStatus.microphone);
+                    console.log('Location:', permissionsStatus.location);
+
+                    if (permissionsStatus.camera && permissionsStatus.microphone && permissionsStatus.location) {
+                        console.log('? All permissions confirmed! Starting VKYC...');
+                        checkAllPermissionsGranted();
+                    } else {
+                        console.error('? Permission mismatch detected!', permissionsStatus);
+                        // Force check anyway
+                        checkAllPermissionsGranted();
+                    }
+                }, 200); // Slightly longer delay to ensure everything is set
+
+                return true;
+            } catch (error) {
+                console.log('Location error:', error);
+                permissionsStatus.location = false;
+
+                // Update Location UI
+                permLocationEl.classList.remove('pending', 'granted');
+                permLocationEl.classList.add('denied');
+                document.getElementById('permLocationText').textContent = 'Location ?';
+
+                let errorMsg = '? Location access failed. ';
+                if (error.code === 1) {
+                    errorMsg += 'Permission denied. Please allow location in browser settings.';
+
+                    // Show guide for enabling location in browser
+                    document.getElementById('locationGuide').innerHTML = `
+                        <h3>?? Browser Location Permission Required</h3>
+                        <p>Please enable location access in your browser:</p>
+                        <ul>
+                            <li><strong>Chrome:</strong> Click lock icon (??) in address bar ? Site settings ? Location ? Allow</li>
+                            <li><strong>Firefox:</strong> Click (i) icon in address bar ? Permissions ? Location ? Allow</li>
+                            <li><strong>Safari:</strong> Preferences ? Websites ? Location ? Allow for this site</li>
+                        </ul>
+                        <div class="location-override">
+                            <p>After enabling, click "Retry Permissions" button.</p>
+                        </div>
+                    `;
+                } else if (error.code === 2) {
+                    errorMsg += 'Location unavailable. Please turn on device GPS/Location services.';
+
+                    // Show device-specific guide
+                    document.getElementById('locationGuide').innerHTML = `
+                        <h3>?? Device Location Required</h3>
+                        <p>Please enable location services on your device:</p>
+                        <ul>
+                            <li><strong>Android:</strong> Settings ? Location ? Turn ON</li>
+                            <li><strong>iOS:</strong> Settings ? Privacy ? Location Services ? Turn ON</li>
+                            <li><strong>Windows:</strong> Settings ? Privacy ? Location ? Turn ON</li>
+                            <li><strong>Mac:</strong> System Preferences ? Security & Privacy ? Privacy ? Location Services ? Turn ON</li>
+                        </ul>
+                        <div class="location-override">
+                            <p>After enabling device location, click "Retry Permissions" button.</p>
+                        </div>
+                    `;
+                } else if (error.code === 3) {
+                    errorMsg += 'Location request timed out. Please try again.';
+                } else {
+                    errorMsg += 'Please check your device and browser location settings.';
+                }
+
+                showStatus(errorMsg, 'error');
+                document.getElementById('retryPermissions').style.display = 'block';
+                return false;
+            }
+        }
+
+        function skipLocation() {
+            // Send a special message to backend about location skip
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'location_skipped',
+                    reason: 'user_override'
+                }));
+            }
+
+            // Temporarily mark location as granted for flow continuation
+            permissionsStatus.location = true;
+
+            const permLocationEl = document.getElementById('permLocation');
+            permLocationEl.className = 'permission-item granted';
+            document.getElementById('permLocationText').textContent = 'Location (Manual)';
+            document.getElementById('locationGuide').style.display = 'none';
+
+            showStatus('Location requirement bypassed. Agent will manually verify location.', 'info');
+            checkAllPermissionsGranted();
+        }
+
+        function checkAllPermissionsGranted() {
+            console.log('=== CHECKING ALL PERMISSIONS ===');
+            console.log('Camera:', permissionsStatus.camera);
+            console.log('Microphone:', permissionsStatus.microphone);
+            console.log('Location:', permissionsStatus.location);
+            console.log('All permissions object:', permissionsStatus);
+
+            const allGranted = permissionsStatus.camera && permissionsStatus.microphone && permissionsStatus.location;
+            console.log('All granted?', allGranted);
+
+            if (allGranted) {
+                console.log('? All permissions granted! Starting VKYC session...');
+                startVKYCSession();
+                return true;
+            } else {
+                console.log('? Not all permissions granted yet. Waiting...');
+                // Show which permissions are missing
+                const missing = [];
+                if (!permissionsStatus.camera) missing.push('Camera');
+                if (!permissionsStatus.microphone) missing.push('Microphone');
+                if (!permissionsStatus.location) missing.push('Location');
+                console.log('Missing permissions:', missing);
+            }
+            return false;
+        }
+
+        function startVKYCSession() {
+            // Hide retry button and location guide
+            document.getElementById('retryPermissions').style.display = 'none';
+            document.getElementById('locationGuide').style.display = 'none';
+
+            // Hide permission status after 2 seconds
+            setTimeout(() => {
+                document.getElementById('permissionStatus').style.display = 'none';
+            }, 2000);
+
+            // Send ready_for_agent message to backend (instead of permissions_granted)
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ready_for_agent' }));
+            }
+
+            // Show waiting screen
+            showWaitingScreen();
+
+            showStatus('? All permissions granted! Waiting for agent...', 'success');
+        }
+
+        // Removed stopRecording function completely
+
+        function startVideo() {
+            // This is called when agent is assigned
+            hideWaitingScreen();
+
+            // Set call layout where remote (agent) video is large and local preview is small
+            document.getElementById('videoWrapper').className = 'video-wrapper video-layout-call';
+
+            // Start recording timer
+            recordingStartTime = Date.now();
+
+            // Check for 5 minute limit
+            const timeCheckInterval = setInterval(() => {
+                if (recordingStartTime && (Date.now() - recordingStartTime) >= MAX_DURATION) {
+                    clearInterval(timeCheckInterval);
+                    showStatus('5 minute time limit reached. Session expired.', 'error');
+                    handleSessionExpiry();
+                }
+            }, 10000); // Check every 10 seconds
+
+            // Show video controls
+            document.querySelector('.video-controls').style.display = 'flex';
+
+            showStatus('VKYC video call is active. Please wait for agent instructions.', 'success');
+
+            const videoElement = document.getElementById('localVideo');
+            safePlay(videoElement);
+        }
+
+        async function requestPermissions() {
+            // Hide retry button
+            document.getElementById('retryPermissions').style.display = 'none';
+            document.getElementById('locationGuide').style.display = 'none';
+
+            // Reset permission status
+            permissionsStatus = {
+                camera: false,
+                microphone: false,
+                location: false
+            };
+
+            // Show permission status UI
+            document.getElementById('permissionStatus').style.display = 'flex';
+
+            // Reset all permission indicators to pending
+            const permCameraEl = document.getElementById('permCamera');
+            permCameraEl.className = 'permission-item pending';
+            document.getElementById('permCameraText').textContent = 'Camera';
+
+            const permMicrophoneEl = document.getElementById('permMicrophone');
+            permMicrophoneEl.className = 'permission-item pending';
+            document.getElementById('permMicrophoneText').textContent = 'Microphone';
+
+            const permLocationEl = document.getElementById('permLocation');
+            permLocationEl.className = 'permission-item pending';
+            document.getElementById('permLocationText').textContent = 'Location';
+
+            try {
+                showStatus('Requesting camera and microphone permissions...', 'info');
+
+                // Request camera and microphone
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                // Update permission status - Camera and Microphone granted
+                permissionsStatus.camera = true;
+                permissionsStatus.microphone = true;
+
+                // Update Camera UI
+                const permCameraEl = document.getElementById('permCamera');
+                permCameraEl.classList.remove('pending', 'denied');
+                permCameraEl.classList.add('granted');
+                document.getElementById('permCameraText').textContent = 'Camera ?';
+
+                // Update Microphone UI
+                const permMicrophoneEl = document.getElementById('permMicrophone');
+                permMicrophoneEl.classList.remove('pending', 'denied');
+                permMicrophoneEl.classList.add('granted');
+                document.getElementById('permMicrophoneText').textContent = 'Microphone ?';
+
+                // Set video stream
+                const videoElement = document.getElementById('localVideo');
+                videoElement.srcObject = localStream;
+                videoElement.style.transform = "none";
+                videoElement.style.webkitTransform = "none";
+
+                // Ensure video plays
+                videoElement.play().catch(e => {
+                    console.log('Video play error:', e);
+                    videoElement.muted = true;
+                    videoElement.play();
+                });
+
+                showStatus('Camera and microphone access granted! Requesting location...', 'success');
+
+                // Request location
+                const locationGranted = await requestLocationPermission();
+
+                // Note: checkAllPermissionsGranted is called inside requestLocationPermission
+                // after location is granted, so we don't need to call it here again
+                if (!locationGranted) {
+                    console.log('Location permission not granted. VKYC cannot start.');
+                }
+
+            } catch (error) {
+                console.error('Error requesting camera/microphone:', error);
+                permissionsStatus.camera = false;
+                permissionsStatus.microphone = false;
+
+                // Update permission status to denied
+                const permCameraEl = document.getElementById('permCamera');
+                permCameraEl.classList.remove('pending', 'granted');
+                permCameraEl.classList.add('denied');
+                document.getElementById('permCameraText').textContent = 'Camera ?';
+
+                const permMicrophoneEl = document.getElementById('permMicrophone');
+                permMicrophoneEl.classList.remove('pending', 'granted');
+                permMicrophoneEl.classList.add('denied');
+                document.getElementById('permMicrophoneText').textContent = 'Microphone ?';
+
+                let errorMsg = '';
+                if (error.name === 'NotAllowedError') {
+                    errorMsg = '? Camera/Microphone permissions denied. Please allow permissions in browser settings.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMsg = '? Camera or microphone not found. Please connect a device and try again.';
+                } else {
+                    errorMsg = '? Error requesting permissions: ' + error.message;
+                }
+                showStatus(errorMsg, 'error');
+
+                // Show retry button
+                document.getElementById('retryPermissions').style.display = 'block';
+            }
+        }
+
+        async function showPAN() {
+            if (!localStream) {
+                showStatus('Please grant camera permission first.', 'error');
+                return;
+            }
+
+            // Capture frame from video
+            const canvas = document.createElement('canvas');
+            const video = document.getElementById('localVideo');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            // Draw video as is (no flipping)
+            ctx.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'pan_detected',
+                    image: imageData.split(',')[1]
+                }));
+                showStatus('PAN card image captured and sent for processing...', 'info');
+            }
+        }
+
+        async function showAadhaar() {
+            if (!localStream) {
+                showStatus('Please grant camera permission first.', 'error');
+                return;
+            }
+
+            // Capture frame from video
+            const canvas = document.createElement('canvas');
+            const video = document.getElementById('localVideo');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            // Draw video as is (no flipping)
+            ctx.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'aadhaar_detected',
+                    image: imageData.split(',')[1]
+                }));
+                showStatus('Aadhaar card image captured and sent for processing...', 'info');
+            }
+        }
+
+        function completeKYC() {
+            // Removed: stopRecording();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'kyc_complete' }));
+                showStatus('Completing KYC process...', 'info');
+            } else {
+                showStatus('Not connected to server.', 'error');
+            }
+        }
+
+        // Removed uploadRecordedVideo function completely
+
+        async function startDocumentCapture(docType) {
+            documentCaptureActive = true;
+            documentCaptureType = docType;
+
+            // Change layout to capture mode (user large, agent small)
+            document.getElementById('videoWrapper').className = 'video-wrapper video-layout-capture';
+
+            // Switch to rear camera if available
+            await switchToRearCamera();
+
+            // Show overlay
+            const overlay = document.getElementById('documentCaptureOverlay');
+            overlay.classList.add('active');
+
+            const docTypeText = docType.toUpperCase();
+            document.getElementById('captureDocType').textContent = `Please show your ${docTypeText} card`;
+
+            // Update status
+            const statusDiv = document.getElementById('captureStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'capture-status detecting';
+            statusDiv.textContent = 'Detecting document...';
+
+            // Start document detection
+            startDocumentDetection();
+        }
+
+        async function switchToRearCamera() {
+            try {
+                // Stop current stream
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+
+                // Try to get rear camera (environment)
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                let constraints = {
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        facingMode: { ideal: 'environment' } // Rear camera
+                    },
+                    audio: false
+                };
+
+                // Try to get rear camera
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    currentCameraMode = 'environment';
+                } catch (e) {
+                    // Fallback to any available camera
+                    console.log('Rear camera not available, using default');
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+                        audio: false
+                    });
+                }
+
+                // Update video element
+                const videoElement = document.getElementById('localVideo');
+                videoElement.srcObject = localStream;
+                videoElement.style.transform = "none";
+                videoElement.style.webkitTransform = "none";
+                videoElement.play();
+
+            } catch (error) {
+                console.error('Error switching camera:', error);
+                showStatus('Error accessing camera. Please check permissions.', 'error');
+            }
+        }
+
+        function startDocumentDetection() {
+            if (captureDetectionInterval) {
+                clearInterval(captureDetectionInterval);
+            }
+
+            stableFrameCount = 0;
+            const video = document.getElementById('localVideo');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            captureDetectionInterval = setInterval(() => {
+                if (!documentCaptureActive || !localStream) {
+                    clearInterval(captureDetectionInterval);
+                    return;
+                }
+
+                try {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+
+                    // Draw video frame
+                    ctx.drawImage(video, 0, 0);
+
+                    // Get capture box coordinates (center 80% of video)
+                    const boxWidth = canvas.width * 0.8;
+                    const boxHeight = boxWidth / 1.6; // Aspect ratio 1.6
+                    const boxX = (canvas.width - boxWidth) / 2;
+                    const boxY = (canvas.height - boxHeight) / 2;
+
+                    // Extract region inside capture box
+                    const imageData = ctx.getImageData(boxX, boxY, boxWidth, boxHeight);
+
+                    // Simple document detection: check for sufficient contrast/edges
+                    const hasDocument = detectDocumentInFrame(imageData);
+
+                    if (hasDocument) {
+                        stableFrameCount++;
+                        const statusDiv = document.getElementById('captureStatus');
+
+                        if (stableFrameCount >= STABLE_FRAMES_REQUIRED) {
+                            // Document is stable, auto-capture
+                            statusDiv.className = 'capture-status capturing';
+                            statusDiv.textContent = 'Capturing...';
+                            clearInterval(captureDetectionInterval);
+                            captureDocument();
+                        } else {
+                            statusDiv.textContent = `Document detected (${stableFrameCount}/${STABLE_FRAMES_REQUIRED})...`;
+                        }
+                    } else {
+                        stableFrameCount = 0;
+                        const statusDiv = document.getElementById('captureStatus');
+                        statusDiv.textContent = 'Position document in the green box...';
+                    }
+                } catch (error) {
+                    console.error('Error in document detection:', error);
+                }
+            }, 200); // Check every 200ms
+        }
+
+        function detectDocumentInFrame(imageData) {
+            // Simple edge detection: count pixels with high contrast
+            const data = imageData.data;
+            let edgeCount = 0;
+            const threshold = 30; // Contrast threshold
+
+            for (let i = 0; i < data.length; i += 16) { // Sample every 4th pixel
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const brightness = (r + g + b) / 3;
+
+                // Check if pixel is significantly different from neighbors
+                if (i + 16 < data.length) {
+                    const nextR = data[i + 16];
+                    const nextG = data[i + 17];
+                    const nextB = data[i + 18];
+                    const nextBrightness = (nextR + nextG + nextB) / 3;
+
+                    if (Math.abs(brightness - nextBrightness) > threshold) {
+                        edgeCount++;
+                    }
+                }
+            }
+
+            // If we have enough edges, likely a document
+            return edgeCount > (data.length / 16) * 0.1; // At least 10% edge pixels
+        }
+
+        async function captureDocument() {
+            const video = document.getElementById('localVideo');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+
+            // Draw video frame
+            ctx.drawImage(video, 0, 0);
+
+            // Get capture box region (high resolution)
+            const boxWidth = canvas.width * 0.8;
+            const boxHeight = boxWidth / 1.6;
+            const boxX = (canvas.width - boxWidth) / 2;
+            const boxY = (canvas.height - boxHeight) / 2;
+
+            // Create new canvas for cropped document
+            const docCanvas = document.createElement('canvas');
+            docCanvas.width = boxWidth;
+            docCanvas.height = boxHeight;
+            const docCtx = docCanvas.getContext('2d');
+
+            // Extract document region
+            docCtx.drawImage(canvas, boxX, boxY, boxWidth, boxHeight, 0, 0, boxWidth, boxHeight);
+
+            // Convert to base64
+            const imageData = docCanvas.toDataURL('image/jpeg', 0.95);
+
+            // Send to backend
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'document_captured',
+                    doc_type: documentCaptureType,
+                    image: imageData.split(',')[1]
+                }));
+            }
+
+            const statusDiv = document.getElementById('captureStatus');
+            statusDiv.className = 'capture-status capturing';
+            statusDiv.textContent = 'Processing document...';
+        }
+
+        function handleDocumentVerificationResult(message) {
+            const statusDiv = document.getElementById('captureStatus');
+
+            if (message.success) {
+                statusDiv.className = 'capture-status success';
+                statusDiv.textContent = `? ${message.doc_type.toUpperCase()} Verified!`;
+
+                // Return to normal mode after 2 seconds
+                setTimeout(() => {
+                    cancelDocumentCapture();
+                    showStatus(message.message || `${message.doc_type.toUpperCase()} verified successfully!`, 'success');
+                }, 2000);
+            } else {
+                statusDiv.className = 'capture-status error';
+                statusDiv.textContent = `? Verification Failed. ${message.message || 'Please try again.'}`;
+
+                // Reset detection for retry
+                stableFrameCount = 0;
+                setTimeout(() => {
+                    statusDiv.className = 'capture-status detecting';
+                    statusDiv.textContent = 'Please show document again...';
+                    startDocumentDetection();
+                }, 3000);
+            }
+        }
+
+        function cancelDocumentCapture() {
+            documentCaptureActive = false;
+            documentCaptureType = null;
+            stableFrameCount = 0;
+
+            // Stop detection
+            if (captureDetectionInterval) {
+                clearInterval(captureDetectionInterval);
+                captureDetectionInterval = null;
+            }
+
+            // Hide overlay
+            const overlay = document.getElementById('documentCaptureOverlay');
+            overlay.classList.remove('active');
+
+            // Return to normal layout
+            document.getElementById('videoWrapper').className = 'video-wrapper video-layout-normal';
+
+            // Switch back to front camera
+            switchToFrontCamera();
+        }
+
+        async function switchToFrontCamera() {
+            try {
+                // Stop current stream
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+
+                // Get front camera
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user' // Front camera
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                currentCameraMode = 'user';
+
+                // Update video element
+                const videoElement = document.getElementById('localVideo');
+                videoElement.srcObject = localStream;
+                videoElement.style.transform = "none";
+                videoElement.style.webkitTransform = "none";
+                videoElement.play();
+
+            } catch (error) {
+                console.error('Error switching to front camera:', error);
+            }
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            console.log('Status:', type, message);
+        }
+    </script>
+</body>
+
+</html>
